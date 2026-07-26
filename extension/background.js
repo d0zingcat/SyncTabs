@@ -1020,7 +1020,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       (async () => {
         await waitForInit();
         try {
-          const tabs = msg.tabs || [];
+          const tabs = (msg.tabs || []).filter(t => t.url && isValidUrl(t.url));
           if (tabs.length === 0) {
             sendResponse({ ok: false, error: 'No tabs to open' });
             return;
