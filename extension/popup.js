@@ -304,10 +304,16 @@ function renderRemoteBrowsers() {
     section.appendChild(header);
     section.appendChild(tabList);
 
+    const remoteInfo = {
+      browserId: id,
+      browserName: name,
+      online: isOnline,
+    };
+
     if (tabCount === 0) {
       tabList.innerHTML = '<div class="empty-state"><p>No tabs saved</p></div>';
     } else {
-      for (const tab of visibleTabs) tabList.appendChild(createTabElement(tab, false));
+      for (const tab of visibleTabs) tabList.appendChild(createTabElement(tab, false, remoteInfo));
     }
 
     header.addEventListener('click', () => {
@@ -319,7 +325,7 @@ function renderRemoteBrowsers() {
 }
 
 // ─── Tab Element ──────────────────────────────────────────────────────────────
-function createTabElement(tab, isLocal) {
+function createTabElement(tab, isLocal, remoteInfo = null) {
   const item = document.createElement(isLocal ? 'div' : 'a');
   item.className = 'tab-item';
 
@@ -435,7 +441,25 @@ function createTabElement(tab, isLocal) {
   if (isLocal) {
     actions.appendChild(createActionBtn('close', 'Close tab', SVG_CLOSE, () => handleCloseTab(tab, item)));
   } else {
-    actions.appendChild(createActionBtn('close', 'Hide from list', SVG_CLOSE, () => handleHideRemoteTab(tab, item)));
+    const isOnline = remoteInfo?.online;
+    const remoteName = remoteInfo?.browserName || 'Remote device';
+    const remoteId = remoteInfo?.browserId;
+
+    if (isOnline && (state.connected || state.isRelayConnected)) {
+      actions.appendChild(createActionBtn(
+        'close',
+        `Close tab on ${remoteName}`,
+        SVG_CLOSE,
+        () => handleCloseRemoteTab(tab, remoteId, remoteName, item)
+      ));
+    } else {
+      actions.appendChild(createActionBtn(
+        'close',
+        'Hide from list',
+        SVG_CLOSE,
+        () => handleHideRemoteTab(tab, item)
+      ));
+    }
   }
 
   item.appendChild(actions);
@@ -517,6 +541,34 @@ async function handleCloseTab(tab, itemEl) {
     showToast('Tab closed');
   } catch (err) {
     showToast('Failed to close tab', 'error');
+  }
+}
+
+async function handleCloseRemoteTab(tab, targetBrowserId, targetBrowserName, itemEl) {
+  // Optimistic removal from DOM
+  itemEl.style.transition = 'opacity 0.15s, height 0.15s';
+  itemEl.style.opacity = '0';
+  itemEl.style.height = '0';
+  itemEl.style.overflow = 'hidden';
+  itemEl.style.padding = '0 14px';
+  setTimeout(() => itemEl.remove(), 150);
+
+  try {
+    showToast(`Closing tab on ${targetBrowserName}…`);
+    const res = await chrome.runtime.sendMessage({
+      type: 'close-remote-tab',
+      targetBrowserId,
+      tab: {
+        id: tab.id,
+        url: tab.url,
+        title: tab.title,
+      },
+    });
+    if (res && !res.ok) {
+      showToast(res.error || 'Failed to close remote tab', 'error');
+    }
+  } catch (err) {
+    showToast('Error communicating with background', 'error');
   }
 }
 
@@ -902,9 +954,16 @@ function renderSearchResults() {
   for (const [id, data] of Object.entries(browsers)) {
     if (!id || id === 'null' || id === state.browserId) continue;
     const name = data.browserName || 'Remote Browser';
+    const isOnline = data.online !== undefined ? data.online : true;
     for (const tab of (data.tabs || [])) {
       if (tab.title.toLowerCase().includes(query) || tab.url.toLowerCase().includes(query)) {
-        matchedTabs.push({ ...tab, deviceName: name, isLocal: false });
+        matchedTabs.push({
+          ...tab,
+          deviceName: name,
+          browserId: id,
+          isOnline,
+          isLocal: false,
+        });
       }
     }
   }
@@ -933,7 +992,12 @@ function renderSearchResults() {
   section.appendChild(tabList);
 
   for (const tab of matchedTabs) {
-    const tabEl = createTabElement(tab, tab.isLocal);
+    const remoteInfo = tab.isLocal ? null : {
+      browserId: tab.browserId,
+      browserName: tab.deviceName,
+      online: tab.isOnline,
+    };
+    const tabEl = createTabElement(tab, tab.isLocal, remoteInfo);
 
     // Add device inline label/badge to tab-info or tab-item
     const info = tabEl.querySelector('.tab-info');
