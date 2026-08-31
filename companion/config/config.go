@@ -11,7 +11,7 @@ import (
 const AppName = "SyncTabs Companion"
 
 // AppVersion can be overridden at build time via -ldflags
-var AppVersion = "1.0.0"
+var AppVersion = "1.1.0"
 
 const DefaultPort = 9234
 const StaleDays = 30

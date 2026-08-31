@@ -2,13 +2,13 @@
   "FixedFileInfo": {
     "FileVersion": {
       "Major": 1,
-      "Minor": 0,
+      "Minor": 1,
       "Patch": 0,
       "Build": 0
     },
     "ProductVersion": {
       "Major": 1,
-      "Minor": 0,
+      "Minor": 1,
       "Patch": 0,
       "Build": 0
     },
@@ -22,12 +22,12 @@
     "Comments": "Local WebSocket server for cross-browser tab sync",
     "CompanyName": "Harsh Vasudeva",
     "FileDescription": "SyncTabs Companion",
-    "FileVersion": "1.0.0.0",
+    "FileVersion": "1.1.0.0",
     "InternalName": "synctabs-companion",
     "LegalCopyright": "Copyright (c) Harsh Vasudeva",
     "OriginalFilename": "synctabs-companion.exe",
     "ProductName": "SyncTabs Companion",
-    "ProductVersion": "1.0.0.0"
+    "ProductVersion": "1.1.0.0"
   },
   "VarFileInfo": {
     "Translation": {
