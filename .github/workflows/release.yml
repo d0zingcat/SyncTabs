@@ -243,9 +243,30 @@ jobs:
             dist/synctabs-companion-linux-amd64
             dist/synctabs-companion_*_amd64.deb
 
+  # ── Browser Extension (.zip for Chrome/Edge/Brave/etc.) ─────────────────────
+  build-extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Pack extension
+        run: |
+          chmod +x ./pack-extension.sh
+          ./pack-extension.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension
+          path: |
+            dist/synctabs-extension*.zip
+
   # ── GitHub Release ─────────────────────────────────────────────────────────
   release:
-    needs: [build-windows, build-macos, build-linux]
+    needs: [build-windows, build-macos, build-linux, build-extension]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -256,11 +277,16 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "SyncTabs Companion ${{ github.ref_name }}"
+          name: "SyncTabs ${{ github.ref_name }}"
           body: |
-            ## SyncTabs Companion ${{ github.ref_name }}
+            ## SyncTabs ${{ github.ref_name }}
 
-            ### Download
+            ### Downloads
+
+            #### 🌐 Browser Extension (Chrome, Edge, Brave, Opera, Vivaldi)
+            - `synctabs-extension.zip` — Load unpacked extension or install via zip
+
+            #### 💻 Desktop Companion
             | Platform | File |
             |----------|------|
             | **Windows Installer** | `SyncTabs-Companion-Setup.exe` |
@@ -275,3 +301,39 @@ jobs:
           files: artifacts/**
           draft: false
           prerelease: false
+
+  # ── Chrome Web Store Auto Publish ──────────────────────────────────────────
+  publish-chrome-web-store:
+    needs: [build-extension]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: extension
+          path: dist
+
+      - name: Upload & Publish to Chrome Web Store
+        if: ${{ env.CHROME_CLIENT_ID != '' && env.CHROME_REFRESH_TOKEN != '' && env.CHROME_EXTENSION_ID != '' }}
+        uses: mnao305/chrome-extension-upload@v5
+        with:
+          file-name: 'dist/synctabs-extension.zip'
+          app-id: ${{ secrets.CHROME_EXTENSION_ID }}
+          client-id: ${{ secrets.CHROME_CLIENT_ID }}
+          client-secret: ${{ secrets.CHROME_CLIENT_SECRET }}
+          refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          publish: true
+        env:
+          CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+
+      - name: Skip Chrome Web Store notice
+        if: ${{ env.CHROME_CLIENT_ID == '' || env.CHROME_REFRESH_TOKEN == '' || env.CHROME_EXTENSION_ID == '' }}
+        run: |
+          echo "ℹ️ Chrome Web Store API secrets not configured. Skipping Web Store automated upload."
+        env:
+          CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}

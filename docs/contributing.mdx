@@ -103,6 +103,31 @@ docker build -t synctabs-relay .
 docker run -p 8765:8765 synctabs-relay
 ```
 
+## Automated Releases & Chrome Web Store Publishing
+
+Releases are fully automated via GitHub Actions on tag pushes (`v*.*.*`).
+
+### Packaging locally
+
+```bash
+# Package Chrome/Edge extension zip
+./pack-extension.sh
+
+# Package Safari Web Extension wrapper (macOS)
+./pack-safari.sh
+```
+
+### Chrome Web Store CI Publishing Setup
+
+To enable automated uploads to Chrome Web Store on release, add the following GitHub Actions Secrets to your repository:
+
+- `CHROME_EXTENSION_ID`: Your Chrome Web Store extension ID
+- `CHROME_CLIENT_ID`: Google Cloud Console OAuth 2.0 Client ID
+- `CHROME_CLIENT_SECRET`: Google Cloud Console OAuth 2.0 Client Secret
+- `CHROME_REFRESH_TOKEN`: Authorized OAuth 2.0 Refresh Token
+
+When configured, every `git tag vX.X.X && git push origin vX.X.X` will build, package, and upload the new version to Chrome Web Store for review automatically.
+
 ## Submitting changes
 
 1. Fork the repository
