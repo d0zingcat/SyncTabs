@@ -377,17 +377,123 @@ window.addEventListener('unload', () => {
 
 // ─── E2EE Relay Sync Panel ─────────────────────────────────────────────────
 
-const toggleRelay       = document.getElementById('toggle-relay');
-const relayConfig       = document.getElementById('relay-config');
-const inputRelayUrl     = document.getElementById('input-relay-url');
-const relayStatusDot    = document.getElementById('relay-status-dot');
-const relayStatusText   = document.getElementById('relay-status-text');
+const toggleRelay        = document.getElementById('toggle-relay');
+const relayConfig        = document.getElementById('relay-config');
+const inputRelayUrl      = document.getElementById('input-relay-url');
+const inputRelayRoomId   = document.getElementById('input-relay-room-id');
+const inputRelaySecretKey = document.getElementById('input-relay-secret-key');
+const btnToggleSecretKey = document.getElementById('btn-toggle-secret-key');
+const inputImportPairing = document.getElementById('input-import-pairing');
+const btnImportPairing   = document.getElementById('btn-import-pairing');
+const relayStatusDot     = document.getElementById('relay-status-dot');
+const relayStatusText    = document.getElementById('relay-status-text');
 const btnGeneratePairing = document.getElementById('btn-generate-pairing');
-const btnSaveRelay      = document.getElementById('btn-save-relay');
-const relaySavedMsg     = document.getElementById('relay-saved-msg');
-const relayQrArea       = document.getElementById('relay-qr-area');
-const relayQrCanvas     = document.getElementById('relay-qr-canvas');
-const relayQrPayload    = document.getElementById('relay-qr-payload');
+const btnSaveRelay       = document.getElementById('btn-save-relay');
+const btnCopyPairing     = document.getElementById('btn-copy-pairing');
+const btnCopyQrLink      = document.getElementById('btn-copy-qr-link');
+const relaySavedMsg      = document.getElementById('relay-saved-msg');
+const relayQrArea        = document.getElementById('relay-qr-area');
+const relayQrCanvas      = document.getElementById('relay-qr-canvas');
+const relayQrPayload     = document.getElementById('relay-qr-payload');
+
+function getPairingUrl() {
+  const relayUrl = (inputRelayUrl?.value || '').trim();
+  const roomId = (inputRelayRoomId?.value || '').trim();
+  const secretKey = (inputRelaySecretKey?.value || '').trim();
+  if (!roomId || !secretKey) return null;
+  const effectiveUrl = relayUrl || 'wss://relay.example.com';
+  const pairingPayload = `relayUrl=${encodeURIComponent(relayUrl)}&roomId=${encodeURIComponent(roomId)}&secretKey=${encodeURIComponent(secretKey)}`;
+
+  // Convert wss:// or ws:// to https:// or http:// for the portal base
+  let portalBase = effectiveUrl.replace(/^wss:\/\//, 'https://').replace(/^ws:\/\//, 'http://').replace(/\/+$/, '');
+  return `${portalBase}/#${pairingPayload}`;
+}
+
+function parsePairingInput(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  let str = raw.trim();
+
+  // Try JSON format
+  if (str.startsWith('{') && str.endsWith('}')) {
+    try {
+      const obj = JSON.parse(str);
+      if (obj.roomId && obj.secretKey) {
+        return {
+          relayUrl: obj.relayUrl || '',
+          roomId: obj.roomId,
+          secretKey: obj.secretKey,
+        };
+      }
+    } catch {}
+  }
+
+  // Handle portal URL with hash or query string
+  if (str.includes('#')) {
+    str = str.substring(str.indexOf('#') + 1);
+  } else if (str.includes('?')) {
+    str = str.substring(str.indexOf('?') + 1);
+  }
+
+  const params = new URLSearchParams(str);
+  const roomId = params.get('roomId');
+  const secretKey = params.get('secretKey');
+  const relayUrl = params.get('relayUrl');
+
+  if (roomId && secretKey) {
+    return {
+      relayUrl: relayUrl || '',
+      roomId,
+      secretKey,
+    };
+  }
+
+  return null;
+}
+
+function updatePairingQRCodeUI() {
+  const pairingUrl = getPairingUrl();
+  if (pairingUrl) {
+    renderQRCode(relayQrCanvas, pairingUrl);
+    relayQrPayload.textContent = pairingUrl;
+    relayQrArea.style.display = 'block';
+    if (btnCopyPairing) btnCopyPairing.style.display = 'inline-block';
+  } else {
+    relayQrArea.style.display = 'none';
+    if (btnCopyPairing) btnCopyPairing.style.display = 'none';
+  }
+}
+
+async function copyPairingLink() {
+  const pairingUrl = getPairingUrl();
+  if (!pairingUrl) {
+    alert('Room ID and Secret Key are required before copying pairing info.');
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(pairingUrl);
+    relaySavedMsg.textContent = 'Copied to clipboard!';
+    relaySavedMsg.classList.add('show');
+    setTimeout(() => {
+      relaySavedMsg.textContent = 'Saved!';
+      relaySavedMsg.classList.remove('show');
+    }, 2000);
+  } catch (err) {
+    prompt('Copy this pairing URL:', pairingUrl);
+  }
+}
+
+btnCopyPairing?.addEventListener('click', copyPairingLink);
+btnCopyQrLink?.addEventListener('click', copyPairingLink);
+
+btnToggleSecretKey?.addEventListener('click', () => {
+  if (inputRelaySecretKey.type === 'password') {
+    inputRelaySecretKey.type = 'text';
+    btnToggleSecretKey.textContent = 'Hide';
+  } else {
+    inputRelaySecretKey.type = 'password';
+    btnToggleSecretKey.textContent = 'Show';
+  }
+});
 
 // Load relay settings on page open
 async function loadRelaySettings() {
@@ -396,25 +502,11 @@ async function loadRelaySettings() {
     if (result) {
       toggleRelay.checked = !!result.relayEnabled;
       inputRelayUrl.value = result.relayUrl || '';
+      inputRelayRoomId.value = result.relayRoomId || '';
+      inputRelaySecretKey.value = result.relaySecretKey || '';
       relayConfig.style.display = toggleRelay.checked ? 'block' : 'none';
       updateRelayStatusUI(result.isRelayConnected);
-
-      // If credentials exist, render the pairing QR code immediately
-      if (result.relayRoomId && result.relaySecretKey) {
-        const relayUrl = result.relayUrl || '';
-        const pairingPayload = `relayUrl=${encodeURIComponent(relayUrl)}&roomId=${encodeURIComponent(result.relayRoomId)}&secretKey=${encodeURIComponent(result.relaySecretKey)}`;
-
-        // Convert wss:// or ws:// to https:// or http:// for the portal base
-        let portalBase = relayUrl.replace(/^wss:\/\//, 'https://').replace(/^ws:\/\//, 'http://');
-        const pairingUrl = `${portalBase}/#${pairingPayload}`;
-
-        // Render QR code
-        renderQRCode(relayQrCanvas, pairingUrl);
-        relayQrPayload.textContent = pairingUrl;
-        relayQrArea.style.display = 'block';
-      } else {
-        relayQrArea.style.display = 'none';
-      }
+      updatePairingQRCodeUI();
     }
   } catch (err) {
     console.error('[SyncTabs] Failed to load relay settings:', err);
@@ -445,12 +537,16 @@ btnSaveRelay.addEventListener('click', async () => {
   const settings = {
     relayEnabled: toggleRelay.checked,
     relayUrl: inputRelayUrl.value.trim(),
+    relayRoomId: inputRelayRoomId.value.trim(),
+    relaySecretKey: inputRelaySecretKey.value.trim(),
   };
   try {
     const result = await chrome.runtime.sendMessage({ type: 'update-relay-settings', settings });
     if (result && result.ok) {
+      relaySavedMsg.textContent = 'Saved!';
       relaySavedMsg.classList.add('show');
       setTimeout(() => relaySavedMsg.classList.remove('show'), 2000);
+      updatePairingQRCodeUI();
       // Refresh status after a moment
       setTimeout(loadRelaySettings, 1500);
     } else {
@@ -471,29 +567,73 @@ btnSaveRelay.addEventListener('click', async () => {
   }
 });
 
+// Quick Import Pairing
+btnImportPairing?.addEventListener('click', async () => {
+  const val = inputImportPairing.value.trim();
+  if (!val) {
+    alert('Please paste a pairing link or code first.');
+    return;
+  }
+  const parsed = parsePairingInput(val);
+  if (!parsed || !parsed.roomId || !parsed.secretKey) {
+    alert('Invalid pairing code/URL. Could not find valid Room ID and Secret Key.');
+    return;
+  }
+
+  if (parsed.relayUrl) {
+    inputRelayUrl.value = parsed.relayUrl;
+  }
+  inputRelayRoomId.value = parsed.roomId;
+  inputRelaySecretKey.value = parsed.secretKey;
+  toggleRelay.checked = true;
+  relayConfig.style.display = 'block';
+  inputImportPairing.value = '';
+
+  const settings = {
+    relayEnabled: true,
+    relayUrl: inputRelayUrl.value.trim(),
+    relayRoomId: parsed.roomId,
+    relaySecretKey: parsed.secretKey,
+  };
+
+  try {
+    await chrome.runtime.sendMessage({ type: 'update-relay-settings', settings });
+    relaySavedMsg.textContent = 'Imported & Saved!';
+    relaySavedMsg.classList.add('show');
+    setTimeout(() => {
+      relaySavedMsg.textContent = 'Saved!';
+      relaySavedMsg.classList.remove('show');
+    }, 2500);
+    updatePairingQRCodeUI();
+    setTimeout(loadRelaySettings, 1500);
+  } catch (err) {
+    console.error('[SyncTabs] Import save failed:', err);
+    alert('Failed to save imported settings.');
+  }
+});
+
 // Generate pairing
 btnGeneratePairing.addEventListener('click', async () => {
+  if (inputRelayRoomId.value.trim() && inputRelaySecretKey.value.trim()) {
+    if (!confirm('Generating new keys will create a NEW Room ID and Secret Key. Other devices connected to the old room will stop syncing until updated. Continue?')) {
+      return;
+    }
+  }
+
   btnGeneratePairing.disabled = true;
   btnGeneratePairing.textContent = 'Generating...';
   try {
     const result = await chrome.runtime.sendMessage({ type: 'generate-relay-pairing' });
     if (result && result.roomId && result.secretKey) {
-      // Update URL field if background returned one
       if (result.relayUrl) {
         inputRelayUrl.value = result.relayUrl;
       }
-      // Build pairing URL
+      inputRelayRoomId.value = result.roomId;
+      inputRelaySecretKey.value = result.secretKey;
+
       const relayUrl = inputRelayUrl.value.trim() || result.relayUrl || '';
-      const pairingPayload = `relayUrl=${encodeURIComponent(relayUrl)}&roomId=${encodeURIComponent(result.roomId)}&secretKey=${encodeURIComponent(result.secretKey)}`;
-
-      // Convert wss:// or ws:// to https:// or http:// for the portal base
-      let portalBase = relayUrl.replace(/^wss:\/\//, 'https://').replace(/^ws:\/\//, 'http://');
-      const pairingUrl = `${portalBase}/#${pairingPayload}`;
-
-      // Render QR code
-      renderQRCode(relayQrCanvas, pairingUrl);
-      relayQrPayload.textContent = pairingUrl;
-      relayQrArea.style.display = 'block';
+      toggleRelay.checked = true;
+      relayConfig.style.display = 'block';
 
       // Auto-save settings with the new keys
       await chrome.runtime.sendMessage({
@@ -501,17 +641,18 @@ btnGeneratePairing.addEventListener('click', async () => {
         settings: {
           relayEnabled: true,
           relayUrl: relayUrl,
+          relayRoomId: result.roomId,
+          relaySecretKey: result.secretKey,
         },
       });
-      toggleRelay.checked = true;
-      relayConfig.style.display = 'block';
+      updatePairingQRCodeUI();
       setTimeout(loadRelaySettings, 1500);
     }
   } catch (err) {
     console.error('[SyncTabs] Generate pairing failed:', err);
   } finally {
     btnGeneratePairing.disabled = false;
-    btnGeneratePairing.textContent = 'Generate Pairing';
+    btnGeneratePairing.textContent = 'Generate New Pairing';
   }
 });
 

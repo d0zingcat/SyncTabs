@@ -2,7 +2,7 @@
 
 > See and switch to every open tab across all your Chromium browsers — from one place, in real time.
 
-![Version](https://img.shields.io/badge/version-1.0.3-blue) ![MV3](https://img.shields.io/badge/Manifest-V3-green) ![Platforms](https://img.shields.io/badge/companion-Windows%20%7C%20macOS%20%7C%20Linux-brightgreen) ![Browsers](https://img.shields.io/badge/browsers-Chrome%20%7C%20Edge%20%7C%20Brave%20%7C%20Opera-blueviolet)
+![Version](https://img.shields.io/badge/version-1.0.4-blue) ![MV3](https://img.shields.io/badge/Manifest-V3-green) ![Platforms](https://img.shields.io/badge/companion-Windows%20%7C%20macOS%20%7C%20Linux-brightgreen) ![Browsers](https://img.shields.io/badge/browsers-Chrome%20%7C%20Edge%20%7C%20Brave%20%7C%20Opera-blueviolet)
 
 ---
 

@@ -333,6 +333,24 @@ wss.on('connection', (ws) => {
         }
         break;
       }
+
+      case 'close-tab': {
+        if (!clientId || !store[clientId] || !msg.targetBrowserId) return;
+        const targetWs = connections.get(msg.targetBrowserId);
+        if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+          targetWs.send(JSON.stringify({
+            type: 'close-tab',
+            targetBrowserId: msg.targetBrowserId,
+            senderBrowserId: clientId,
+            senderBrowserName: store[clientId].browserName,
+            tabId: msg.tabId,
+            url: msg.url,
+            title: msg.title,
+          }));
+          console.log(`[CloseTab] Tab close requested from ${clientId} → ${msg.targetBrowserId} (tabId: ${msg.tabId})`);
+        }
+        break;
+      }
     }
   });
 

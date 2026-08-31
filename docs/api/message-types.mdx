@@ -114,6 +114,33 @@ Send a tab to a specific browser.
 
 ---
 
+### `close-tab`
+
+Request a remote browser to close a specific open tab (E2EE encrypted via relay or routed via companion).
+
+```json
+{
+  "type": "close-tab",
+  "targetBrowserId": "xyz789ghi012",
+  "senderBrowserId": "abc123def456",
+  "senderBrowserName": "Chrome",
+  "tabId": 1042,
+  "url": "https://github.com",
+  "title": "GitHub"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `targetBrowserId` | string | Yes | Target browser ID whose tab should be closed |
+| `senderBrowserId` | string | No | Sender browser ID |
+| `senderBrowserName` | string | No | Sender browser name for logging |
+| `tabId` | number | No | Browser-assigned internal tab ID on target machine |
+| `url` | string | Yes | URL of the tab to close (used for safety verification & fallback lookup) |
+| `title` | string | No | Title of the tab (optional fallback match criteria) |
+
+---
+
 ### `update-global-sync-settings`
 
 Broadcast relay/E2EE settings to all connected browsers.

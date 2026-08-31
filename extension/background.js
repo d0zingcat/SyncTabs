@@ -387,6 +387,104 @@ async function sendTabToBrowser(targetBrowserId, tab) {
   }
 }
 
+// ─── Close Remote Tab Helper ──────────────────────────────────────────────────
+async function closeTabOnRemoteBrowser(targetBrowserId, tab) {
+  await waitForInit();
+  if (!targetBrowserId || !tab) {
+    return { ok: false, error: 'Invalid parameters for close-tab' };
+  }
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: 'close-tab',
+      targetBrowserId,
+      senderBrowserId: browserId,
+      senderBrowserName: browserName,
+      tabId: tab.id,
+      url: tab.url,
+      title: tab.title,
+    }));
+    return { ok: true };
+  } else if (relayWs && relayWs.readyState === WebSocket.OPEN && relayCryptoKey) {
+    try {
+      const payload = JSON.stringify({
+        type: 'close-tab',
+        targetBrowserId,
+        senderBrowserId: browserId,
+        senderBrowserName: browserName,
+        tabId: tab.id,
+        url: tab.url,
+        title: tab.title,
+        timestamp: Date.now(),
+      });
+      const { iv, ciphertext } = await self.SyncTabsE2EE.encrypt(relayCryptoKey, payload);
+      relayWs.send(JSON.stringify({
+        type: 'relay-data',
+        roomId: settings.relayRoomId,
+        iv,
+        ciphertext,
+      }));
+      return { ok: true };
+    } catch (err) {
+      console.error('[SyncTabs Relay] Failed to send close-tab over relay:', err);
+      return { ok: false, error: 'Failed to encrypt/send close-tab over relay' };
+    }
+  } else {
+    return { ok: false, error: 'Not connected to server or relay' };
+  }
+}
+
+// ─── Safe Local Tab Closing (Requested Remotely) ───────────────────────────
+async function handleRemoteCloseTabRequest(data) {
+  const { tabId, url, title, senderBrowserName } = data;
+  if (!url && typeof tabId !== 'number') return;
+
+  let targetTabId = null;
+
+  // 1. Try direct tabId lookup if provided
+  if (typeof tabId === 'number' && tabId > 0) {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (tab && (tab.url === url || tab.pendingUrl === url || !url)) {
+        targetTabId = tab.id;
+      }
+    } catch {
+      // Tab ID may have expired or changed
+    }
+  }
+
+  // 2. Fallback to querying open tabs by URL
+  if (!targetTabId && url) {
+    try {
+      const allTabs = await chrome.tabs.query({});
+      const matched = allTabs.find(t => {
+        const tUrl = t.url || t.pendingUrl;
+        if (!tUrl) return false;
+        if (tUrl === url) return true;
+        if (title && t.title === title && tUrl.split('#')[0] === url.split('#')[0]) return true;
+        return false;
+      });
+      if (matched) {
+        targetTabId = matched.id;
+      }
+    } catch (err) {
+      console.warn('[SyncTabs] Failed to query tabs for remote close:', err);
+    }
+  }
+
+  // 3. Remove the tab if found
+  if (targetTabId) {
+    try {
+      await chrome.tabs.remove(targetTabId);
+      console.log(`[SyncTabs] Successfully closed tab ${targetTabId} requested by ${senderBrowserName || 'remote browser'}`);
+    } catch (err) {
+      console.error('[SyncTabs] Failed to remove tab for remote close request:', err);
+    }
+  } else {
+    console.warn('[SyncTabs] Could not find matching tab to close for request:', data);
+  }
+}
+
 // ─── Snapshots (persist on last window close) ─────────────────────────────────
 async function saveSnapshot() {
   const tabs = await collectTabs();
@@ -515,10 +613,8 @@ async function connectWebSocket() {
           await saveSettings(changes);
 
           if (settings.relayEnabled && settings.relayUrl && settings.relayRoomId && settings.relaySecretKey) {
-            if (!oldEnabled || !isRelayConnected) {
-              disconnectRelay();
-              connectRelay();
-            }
+            disconnectRelay();
+            connectRelay();
           } else if (!settings.relayEnabled) {
             disconnectRelay();
           }
@@ -583,6 +679,11 @@ async function connectWebSocket() {
       }
       case 'send-tab-ack': {
         notifyPopup({ type: 'send-tab-ack', status: msg.status, targetBrowserId: msg.targetBrowserId });
+        break;
+      }
+      case 'close-tab': {
+        if (msg.targetBrowserId && msg.targetBrowserId !== browserId) break;
+        await handleRemoteCloseTabRequest(msg);
         break;
       }
     }
@@ -735,6 +836,15 @@ async function handleRelayData(msg) {
         const sender = data.senderBrowserName || 'Remote browser';
         notifyPopup({ type: 'tabs-received', count: 1, senderName: sender });
       }
+      return;
+    }
+
+    // If it's a close-tab command, close matching local tab
+    if (data.type === 'close-tab') {
+      if (data.targetBrowserId && data.targetBrowserId !== browserId) {
+        return;
+      }
+      await handleRemoteCloseTabRequest(data);
       return;
     }
 
@@ -947,6 +1057,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     case 'send-tab': {
       (async () => {
         const res = await sendTabToBrowser(msg.targetBrowserId, msg.tab);
+        sendResponse(res);
+      })();
+      return true;
+    }
+    case 'close-remote-tab': {
+      (async () => {
+        const res = await closeTabOnRemoteBrowser(msg.targetBrowserId, msg.tab);
         sendResponse(res);
       })();
       return true;
@@ -1267,11 +1384,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         }
 
         if (settings.relayEnabled && settings.relayUrl && settings.relayRoomId && settings.relaySecretKey) {
-          // Disconnect and reconnect if settings changed or newly enabled
-          if (!oldEnabled || !isRelayConnected) {
-            disconnectRelay();
-            connectRelay();
-          }
+          disconnectRelay();
+          connectRelay();
         } else if (!settings.relayEnabled) {
           disconnectRelay();
         }

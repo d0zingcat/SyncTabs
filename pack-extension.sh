@@ -1,100 +1,86 @@
 #!/bin/bash
-# Pack Chrome extension into .crx format
+# Pack Chrome extension into .zip format for Chrome Web Store and .crx for direct distribution
 #
 # Usage: ./pack-extension.sh
-#
-# Requirements:
-# - extension.pem (your private key, stored locally)
-# - Chrome/Chromium installed
-#
-# Note: This is primarily for development/distribution.
-#       For Chrome Web Store, submit the extension/ folder directly.
 
 set -e
 
-EXTENSION_DIR="$(pwd)/extension"
-PEM_FILE="$(pwd)/extension.pem"
-DIST_DIR="$(pwd)/dist"
-OUTPUT_CRX="${DIST_DIR}/synctabs-extension.crx"
-
-echo "🔨 Packing SyncTabs Extension..."
-echo ""
-
-# Check for .pem file
-if [ ! -f "$PEM_FILE" ]; then
-    echo "❌ Error: extension.pem not found!"
-    echo "   Expected at: $PEM_FILE"
-    echo ""
-    echo "The .pem file is your private extension signing key."
-    echo "Keep it safe and NEVER commit to git."
-    echo ""
-    echo "To generate a new key:"
-    echo "  1. Open chrome://extensions/"
-    echo "  2. Enable Developer mode (top-right)"
-    echo "  3. Click 'Pack extension'"
-    echo "  4. Select the extension/ folder"
-    echo "  5. Save the generated key as extension.pem"
-    echo ""
-    exit 1
-fi
-
-echo "✓ Found extension.pem"
-echo ""
+WORK_DIR="$(pwd)"
+EXTENSION_DIR="${WORK_DIR}/extension"
+PEM_FILE="${WORK_DIR}/extension.pem"
+DIST_DIR="${WORK_DIR}/dist"
 
 # Ensure dist directory exists
 mkdir -p "$DIST_DIR"
 
-# Find Chrome/Chromium executable
-if command -v google-chrome &> /dev/null; then
-    CHROME="google-chrome"
-elif command -v chromium &> /dev/null; then
-    CHROME="chromium"
-elif command -v chromium-browser &> /dev/null; then
-    CHROME="chromium-browser"
-elif [ -f "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ]; then
-    CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-else
-    echo "⚠️  Chrome/Chromium not found in PATH"
-    echo ""
-    echo "Option 1: Use Chrome's built-in packing"
-    echo "  1. Open chrome://extensions/"
-    echo "  2. Enable Developer mode"
-    echo "  3. Click 'Pack extension'"
-    echo "  4. Select: extension/"
-    echo "  5. Select key file: extension.pem"
-    echo ""
-    echo "Option 2: Install Chromium"
-    echo "  macOS: brew install chromium"
-    echo "  Linux: sudo apt-get install chromium"
-    echo ""
-    exit 1
-fi
-
-echo "📦 Using Chrome at: $CHROME"
+echo "🔨 Validating and Packing SyncTabs Extension..."
 echo ""
 
-# Pack extension
-echo "Packing extension..."
-"$CHROME" \
-    --pack-extension="$EXTENSION_DIR" \
-    --pack-extension-key="$PEM_FILE" \
-    --no-message-box
+# 1. Read version from manifest.json
+VERSION=$(node -p "require('${EXTENSION_DIR}/manifest.json').version" 2>/dev/null || echo "1.0.4")
+echo "📌 Extension Version: v${VERSION}"
 
-# Chrome outputs to extension.crx in the parent directory
-if [ -f "$(dirname "$EXTENSION_DIR")/extension.crx" ]; then
-    mv "$(dirname "$EXTENSION_DIR")/extension.crx" "$OUTPUT_CRX"
-    echo ""
-    echo "✨ Successfully packed extension!"
-    echo "   Output: $OUTPUT_CRX"
-    echo "   Size: $(du -h "$OUTPUT_CRX" | cut -f1)"
-    echo ""
-    echo "📦 Installation options:"
-    echo "   1. Drag & drop: $OUTPUT_CRX into chrome://extensions/"
-    echo "   2. Sideload: chrome://extensions/ → Load unpacked → extension/ folder"
-    echo "   3. Chrome Web Store: Submit extension/ folder directly"
-    echo ""
+# 2. Syntax validation
+echo "🔍 Validating JavaScript syntax..."
+for jsfile in "${EXTENSION_DIR}"/*.js; do
+  if [ -f "$jsfile" ]; then
+    node -c "$jsfile"
+    echo "  ✓ $(basename "$jsfile") passed syntax check"
+  fi
+done
+echo ""
+
+# 3. Create Chrome Web Store ZIP package
+OUTPUT_VERSIONED_ZIP="${DIST_DIR}/synctabs-extension-v${VERSION}.zip"
+OUTPUT_ZIP="${DIST_DIR}/synctabs-extension.zip"
+
+echo "📦 Creating Chrome Web Store ZIP package..."
+rm -f "$OUTPUT_VERSIONED_ZIP" "$OUTPUT_ZIP"
+
+(
+  cd "$EXTENSION_DIR"
+  zip -r -FS -q "$OUTPUT_VERSIONED_ZIP" . -x "*.DS_Store" "*__MACOSX*" "*.git*" "*Thumbs.db*"
+)
+
+cp "$OUTPUT_VERSIONED_ZIP" "$OUTPUT_ZIP"
+echo "✨ Created Web Store Zip: $OUTPUT_VERSIONED_ZIP"
+echo "   Size: $(du -h "$OUTPUT_VERSIONED_ZIP" | cut -f1)"
+echo ""
+
+# 4. Optional .crx packing (if .pem file exists and Chrome is installed)
+if [ -f "$PEM_FILE" ]; then
+  OUTPUT_CRX="${DIST_DIR}/synctabs-extension.crx"
+  echo "🔑 Found extension.pem, packing .crx..."
+
+  CHROME=""
+  if command -v google-chrome &> /dev/null; then
+    CHROME="google-chrome"
+  elif command -v chromium &> /dev/null; then
+    CHROME="chromium"
+  elif command -v chromium-browser &> /dev/null; then
+    CHROME="chromium-browser"
+  elif [ -f "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ]; then
+    CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+  fi
+
+  if [ -n "$CHROME" ]; then
+    "$CHROME" \
+      --pack-extension="$EXTENSION_DIR" \
+      --pack-extension-key="$PEM_FILE" \
+      --no-message-box 2>/dev/null || true
+
+    if [ -f "$(dirname "$EXTENSION_DIR")/extension.crx" ]; then
+      mv "$(dirname "$EXTENSION_DIR")/extension.crx" "$OUTPUT_CRX"
+      echo "✨ Created CRX: $OUTPUT_CRX"
+    fi
+  else
+    echo "ℹ️  Chrome binary not found; skipping .crx generation."
+  fi
 else
-    echo "⚠️  Chrome packing may have failed."
-    echo "   Try the manual method above."
-    exit 1
+  echo "ℹ️  extension.pem not found (only needed for direct CRX signing). Web Store ZIP created successfully!"
 fi
+
+echo ""
+echo "🎉 Package ready for upload to Chrome Web Store:"
+echo "   👉 $OUTPUT_VERSIONED_ZIP"
+echo ""

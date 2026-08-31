@@ -135,6 +135,9 @@ type inboundMsg struct {
 	TargetBrowserID string          `json:"targetBrowserId"`
 	Tab             json.RawMessage `json:"tab"`
 	Settings        json.RawMessage `json:"settings"`
+	TabID           int             `json:"tabId"`
+	URL             string          `json:"url"`
+	Title           string          `json:"title"`
 }
 
 // HandleConnection is called once per new WebSocket upgrade.
@@ -192,6 +195,8 @@ func HandleConnection(
 			handleRequestState(conn, state)
 		case "send-tab":
 			handleSendTab(conn, msg, state, pending, reg)
+		case "close-tab":
+			handleCloseTab(conn, msg, state, reg)
 		case "update-global-sync-settings":
 			handleUpdateGlobalSyncSettings(conn, msg, state, reg)
 		}
@@ -386,6 +391,38 @@ func handleSendTab(
 			"targetBrowserId": msg.TargetBrowserID,
 		})
 		logger.Info("[Send] %s → %s (queued): %s", conn.browserId, msg.TargetBrowserID, tab.URL)
+	}
+}
+
+func handleCloseTab(
+	conn *clientConn,
+	msg inboundMsg,
+	state *StateStore,
+	reg *connectionRegistry,
+) {
+	if conn.browserId == "" || msg.TargetBrowserID == "" {
+		return
+	}
+
+	senderData, _ := state.Get(conn.browserId)
+	senderName := senderData.BrowserName
+	if senderName == "" {
+		senderName = conn.browserId
+	}
+
+	if target, ok := reg.get(msg.TargetBrowserID); ok {
+		_ = target.sendJSON(map[string]interface{}{
+			"type":              "close-tab",
+			"targetBrowserId":   msg.TargetBrowserID,
+			"senderBrowserId":   conn.browserId,
+			"senderBrowserName": senderName,
+			"tabId":             msg.TabID,
+			"url":               msg.URL,
+			"title":             msg.Title,
+		})
+		logger.Info("[CloseTab] %s → %s: tabId=%d url=%s", conn.browserId, msg.TargetBrowserID, msg.TabID, msg.URL)
+	} else {
+		logger.Warn("[CloseTab] Target browser %s offline or not found", msg.TargetBrowserID)
 	}
 }
 
