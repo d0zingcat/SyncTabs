@@ -515,10 +515,8 @@ async function connectWebSocket() {
           await saveSettings(changes);
 
           if (settings.relayEnabled && settings.relayUrl && settings.relayRoomId && settings.relaySecretKey) {
-            if (!oldEnabled || !isRelayConnected) {
-              disconnectRelay();
-              connectRelay();
-            }
+            disconnectRelay();
+            connectRelay();
           } else if (!settings.relayEnabled) {
             disconnectRelay();
           }
@@ -1267,11 +1265,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         }
 
         if (settings.relayEnabled && settings.relayUrl && settings.relayRoomId && settings.relaySecretKey) {
-          // Disconnect and reconnect if settings changed or newly enabled
-          if (!oldEnabled || !isRelayConnected) {
-            disconnectRelay();
-            connectRelay();
-          }
+          disconnectRelay();
+          connectRelay();
         } else if (!settings.relayEnabled) {
           disconnectRelay();
         }
