@@ -243,9 +243,30 @@ jobs:
             dist/synctabs-companion-linux-amd64
             dist/synctabs-companion_*_amd64.deb
 
+  # ── Browser Extension (.zip for Chrome/Edge/Brave/etc.) ─────────────────────
+  build-extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Pack extension
+        run: |
+          chmod +x ./pack-extension.sh
+          ./pack-extension.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension
+          path: |
+            dist/synctabs-extension*.zip
+
   # ── GitHub Release ─────────────────────────────────────────────────────────
   release:
-    needs: [build-windows, build-macos, build-linux]
+    needs: [build-windows, build-macos, build-linux, build-extension]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -256,11 +277,16 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "SyncTabs Companion ${{ github.ref_name }}"
+          name: "SyncTabs ${{ github.ref_name }}"
           body: |
-            ## SyncTabs Companion ${{ github.ref_name }}
+            ## SyncTabs ${{ github.ref_name }}
 
-            ### Download
+            ### Downloads
+
+            #### 🌐 Browser Extension (Chrome, Edge, Brave, Opera, Vivaldi)
+            - `synctabs-extension.zip` — Load unpacked extension or install via zip
+
+            #### 💻 Desktop Companion
             | Platform | File |
             |----------|------|
             | **Windows Installer** | `SyncTabs-Companion-Setup.exe` |
