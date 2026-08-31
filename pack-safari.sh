@@ -21,21 +21,30 @@ rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 mkdir -p "$DIST_DIR"
 
-# Build archive using xcodebuild
-echo "🏗️  Running xcodebuild archive..."
+# Build archive using xcodebuild with ad-hoc signing
+echo "🏗️  Running xcodebuild archive with ad-hoc signing..."
 xcodebuild -project "${SAFARI_DIR}/SyncTabs.xcodeproj" \
            -scheme "SyncTabs" \
            -configuration Release \
            -archivePath "$ARCHIVE_PATH" \
-           CODE_SIGN_IDENTITY="" \
-           CODE_SIGNING_REQUIRED=NO \
-           CODE_SIGNING_ALLOWED=NO \
+           CODE_SIGN_IDENTITY="-" \
            archive
 
 if [ ! -d "$APP_BUNDLE" ]; then
     echo "❌ Error: App bundle not found at $APP_BUNDLE"
     exit 1
 fi
+
+# Ensure deep code signature with sealed resources
+echo "🔏 Applying deep ad-hoc signature to app and extension..."
+codesign --force --deep --sign - "$APP_BUNDLE"
+
+# Clear quarantine attributes from archive bundle
+xattr -cr "$APP_BUNDLE" 2>/dev/null || true
+
+# Register with LaunchServices
+echo "📋 Registering with LaunchServices..."
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f -R -trusted "$APP_BUNDLE" 2>/dev/null || true
 
 # Package into zip for distribution
 echo "📦 Packaging into zip..."
@@ -52,8 +61,11 @@ echo "   Output: $OUTPUT_VERSIONED_ZIP"
 echo "   Size: $(du -h "$OUTPUT_VERSIONED_ZIP" | cut -f1)"
 echo ""
 echo "🎉 To install/test on macOS:"
-echo "   1. Unzip $OUTPUT_VERSIONED_ZIP and move SyncTabs.app to /Applications (or run from folder)"
+echo "   1. Copy SyncTabs.app to /Applications/:"
+echo "      cp -R \"${APP_BUNDLE}\" /Applications/"
+echo "      xattr -cr /Applications/SyncTabs.app"
 echo "   2. In Safari -> Settings -> Advanced -> enable 'Show features for web developers'"
-echo "   3. In Safari menu -> Develop -> check 'Allow Unsigned Extensions'"
-echo "   4. In Safari -> Settings -> Extensions -> enable SyncTabs"
+echo "   3. In Safari top menu -> Develop -> check 'Allow Unsigned Extensions' (enter password)"
+echo "   4. Launch /Applications/SyncTabs.app and click 'Quit and Open Safari Extensions Preferences...'"
+echo "   5. In Safari -> Settings -> Extensions -> enable SyncTabs"
 echo ""
