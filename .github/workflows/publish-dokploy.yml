@@ -43,8 +43,6 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
-          build-args: ${{ secrets.DOKPLOY_BUILD_ARGS }}
-          secrets: ${{ secrets.DOKPLOY_BUILD_SECRETS }}
           cache-from: type=gha,scope=dokploy-linux-amd64
           cache-to: type=gha,mode=max,scope=dokploy-linux-amd64
 
